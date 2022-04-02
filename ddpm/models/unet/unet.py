@@ -54,21 +54,22 @@ class UNetModel(nn.Module):
 
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
-        self.locals = [ in_channels,
-                        model_channels,
-                        out_channels,
-                        num_res_blocks,
-                        attention_resolutions,
-                        dropout,
-                        channel_mult,
-                        conv_resample,
-                        dims,
-                        num_classes,
-                        use_checkpoint,
-                        num_heads,
-                        num_heads_upsample,
-                        use_scale_shift_norm
-                    ]
+        self.locals = [
+            in_channels,
+            model_channels,
+            out_channels,
+            num_res_blocks,
+            attention_resolutions,
+            dropout,
+            channel_mult,
+            conv_resample,
+            dims,
+            num_classes,
+            use_checkpoint,
+            num_heads,
+            num_heads_upsample,
+            use_scale_shift_norm,
+        ]
         self.in_channels = in_channels
         self.model_channels = model_channels
         self.out_channels = out_channels
@@ -185,7 +186,6 @@ class UNetModel(nn.Module):
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
 
-
     def convert_to_fp16(self):
         """
         Convert the torso of the model to float16.
@@ -202,8 +202,7 @@ class UNetModel(nn.Module):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-
-    def forward(self, x, timesteps, y=None):
+    def forward(self, x, t, y=None):
 
         """
         Apply the model to an input batch.
@@ -212,7 +211,7 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        timesteps = timesteps.squeeze()
+        timesteps = t.squeeze()
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
@@ -224,7 +223,7 @@ class UNetModel(nn.Module):
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
 
-        h = x#.type(self.inner_dtype)
+        h = x  # .type(self.inner_dtype)
         for module in self.input_blocks:
             h = module(h, emb)
             hs.append(h)
@@ -253,7 +252,7 @@ class UNetModel(nn.Module):
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
         result = dict(down=[], up=[])
-        h = x#.type(self.inner_dtype)
+        h = x  # .type(self.inner_dtype)
         for module in self.input_blocks:
             h = module(h, emb)
             hs.append(h)

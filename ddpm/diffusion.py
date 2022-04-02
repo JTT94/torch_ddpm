@@ -1,8 +1,8 @@
 import torch
-from torch.distributions.categorical import Categorical
-from .utils import batch_mul, DataClass
-
-from .typing import Function
+import numpy as np
+from ddpm.utils import batch_mul, DataClass
+from ddpm.typing import Function
+from ddpm.diffusion import get_mean_scale_reverse_fn
 
 
 def get_mean_scale_reverse_fn(
@@ -16,14 +16,14 @@ def get_mean_scale_reverse_fn(
         shape = x_T.shape
         B = shape[0]
 
-        timesteps = torch.linspace(T, eps, N)
+        timesteps = torch.linspace(T, eps, N).to(x_T.device)
 
         def loop_body(i, val):
             x, x_mean = val
             t = timesteps[i]
-            vec_t = (torch.ones(B) * t).reshape(B, 1)
+            vec_t = (torch.ones(B).to(x_T.device) * t).reshape(B, 1)
             x_mean, scale = mean_scale_fn(x, vec_t, score_fn)
-            noise = torch.randn(x.shape)
+            noise = torch.randn(x.shape).to(x_T.device)
             x = x_mean + batch_mul(scale, noise)
             return x, x_mean
 
@@ -37,25 +37,44 @@ def get_mean_scale_reverse_fn(
     return simulate_reverse_diffusion
 
 
-class Diffusion(object):
+class Diffusion(torch.nn.Module):
     """ """
 
     def __init__(self, beta_min=0.1, beta_max=20, N=1000, eps=1e-3, T=1.0) -> None:
         super().__init__()
-        self.beta_0 = beta_min
-        self.beta_1 = beta_max
+        self.register_buffer("beta_0", torch.tensor(beta_min))
+        self.register_buffer("beta_1", torch.tensor(beta_max))
         self.N = N
         self.T = T
         self.eps = eps
 
-        self.discrete_betas = torch.linspace(beta_min / N, beta_max / N, N)  # to gpu
-        self.alphas = 1.0 - self.discrete_betas
-        self.alphas_cumprod = torch.cumprod(self.alphas, axis=0)
-        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
-        self.sqrt_1m_alphas_cumprod = torch.sqrt(1.0 - self.alphas_cumprod)
+        discrete_betas = torch.linspace(beta_min / N, beta_max / N, N)  # to gpu
+        self.register_buffer("discrete_betas", discrete_betas)
+
+        alphas = 1.0 - self.discrete_betas
+        self.register_buffer("alphas", alphas)
+
+        alphas_cumprod = torch.cumprod(self.alphas, axis=0)
+        self.register_buffer("alphas_cumprod", alphas_cumprod)
+
+        sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
+        self.register_buffer("sqrt_alphas_cumprod", sqrt_alphas_cumprod)
+
+        sqrt_1m_alphas_cumprod = torch.sqrt(1.0 - self.alphas_cumprod)
+        self.register_buffer("sqrt_1m_alphas_cumprod", sqrt_1m_alphas_cumprod)
 
     def sample_t(self, x_0: torch.Tensor) -> torch.Tensor:
-        return Categorical(probs=torch.ones(self.N)).sample((x_0.shape[0],))
+        # return Categorical(probs=torch.ones(self.N)).sample((x_0.shape[0],))
+        indices_np = np.random.choice(self.N, size=(x_0.shape[0],))
+        indices = torch.from_numpy(indices_np).long().to(x_0.device)
+        return indices
+
+    def sample_x(self, x_0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        noise = torch.randn_like(x_0)
+        x_t = batch_mul(self.sqrt_alphas_cumprod[t], x_0) + batch_mul(
+            self.sqrt_1m_alphas_cumprod[t], noise
+        )
+        return DataClass(x_t=x_t, z=noise, t=t)
 
     def loss(self, model_output: torch.Tensor, noise: torch.Tensor) -> torch.Tensor:
         losses = torch.square(model_output - noise)
@@ -76,13 +95,6 @@ class Diffusion(object):
         score = -model_pred * 1.0 / std
         x_mean = (x_t + batch_mul(beta, score)) * 1.0 / torch.sqrt(1.0 - beta)
         return x_mean, torch.sqrt(beta)
-
-    def sample_x(self, x_0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        noise = torch.randn(x_0.shape)
-        x_t = batch_mul(self.sqrt_alphas_cumprod[t], x_0) + batch_mul(
-            self.sqrt_1m_alphas_cumprod[t], noise
-        )
-        return DataClass(x_t=x_t, z=noise, t=t)
 
     def reverse_sample(self, x_T: torch.Tensor, score_fn: Function):
         sample_fn = get_mean_scale_reverse_fn(

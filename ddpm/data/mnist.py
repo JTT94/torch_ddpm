@@ -18,7 +18,7 @@ class MNIST(Dataset):
         source_root=None,
         imageSize=28,
         train=True,
-        num_channels=3,
+        num_channels=1,
         device="cpu",
     ):  # load=True means loading the dataset from existed files.
         super(MNIST, self).__init__()
@@ -76,8 +76,8 @@ class MNIST(Dataset):
             torch.save(self.targets, os.path.join(root, "targets.pt"))
             vutils.save_image(x, "ali.png", nrow=10)
 
-        self.data = self.data  # .to(device)
-        self.targets = self.targets  # .to(device)
+        self.data = self.data.to(device)
+        self.targets = self.targets.to(device)
 
     def __getitem__(self, index):
         img, targets = self.data[index], self.targets[index]
