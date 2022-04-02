@@ -2,7 +2,6 @@ import torch
 import numpy as np
 from ddpm.utils import batch_mul, DataClass
 from ddpm.typing import Function
-from ddpm.diffusion import get_mean_scale_reverse_fn
 
 
 def get_mean_scale_reverse_fn(
@@ -92,8 +91,8 @@ class Diffusion(torch.nn.Module):
 
         model_pred = score_fn(x_t, timestep)
         std = self.sqrt_1m_alphas_cumprod[t_label.type(torch.int64)]
-        score = -model_pred * 1.0 / std
-        x_mean = (x_t + batch_mul(beta, score)) * 1.0 / torch.sqrt(1.0 - beta)
+        score = -batch_mul(model_pred, 1.0 / std)
+        x_mean = batch_mul((x_t + batch_mul(beta, score)), 1.0 / torch.sqrt(1.0 - beta))
         return x_mean, torch.sqrt(beta)
 
     def reverse_sample(self, x_T: torch.Tensor, score_fn: Function):
@@ -103,4 +102,5 @@ class Diffusion(torch.nn.Module):
             N=self.N,
             T=self.T,
         )
-        return sample_fn(x_T)
+        with torch.no_grad():
+            return sample_fn(x_T)

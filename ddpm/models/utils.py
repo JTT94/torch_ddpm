@@ -3,7 +3,7 @@ from .basic import ScoreNetwork
 
 
 def get_unet(image_size, image_channels):
-    num_channels = 64
+    num_channels = 32
     num_res_blocks = 2
     num_heads = 4
     num_heads_upsample = -1

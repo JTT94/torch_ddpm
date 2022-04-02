@@ -105,7 +105,7 @@ def two_dim(npar, data):
     return init_sample
 
 
-def get_two_dim_ds(npar, data_tag):
-    init_sample = two_dim(npar, data_tag)
+def get_two_dim_ds(npar, data_tag, device='cpu'):
+    init_sample = two_dim(npar, data_tag).to(device)
     init_ds = TensorDataset(init_sample)
     return init_ds
